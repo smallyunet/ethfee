@@ -1,7 +1,7 @@
-// app/page.tsx
 import React from "react";
 import Link from "next/link";
 import { ArrowUpRightFromSquare, Twitter, Send } from "lucide-react";
+import LocalTime from "@/components/LocalTime";
 
 type GasResponse = {
   safe: string;
@@ -54,6 +54,7 @@ export default async function Home() {
         <h2 className="text-xl font-semibold mb-4 text-gray-800">
           Current Gas Fees
         </h2>
+
         <ul className="space-y-3">
           {[
             { label: "Safe", value: gas.safe },
@@ -70,10 +71,12 @@ export default async function Home() {
           ))}
         </ul>
 
-        <div className="mt-4 text-xs text-gray-500">
+        <div className="mt-4 text-xs text-gray-500 space-y-1">
           <p>Base fee: {gas.base_fee}</p>
-          <p>Block: {gas.last_block}</p>
-          <p>Updated: {new Date(gas.last_updated).toLocaleTimeString()}</p>
+          <p>Block&nbsp;# {gas.last_block}</p>
+          <p>
+            Updated: <LocalTime iso={gas.last_updated} />
+          </p>
         </div>
       </section>
 
@@ -82,6 +85,7 @@ export default async function Home() {
         <h2 className="text-lg font-semibold mb-4 text-gray-800">
           Threshold Events
         </h2>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -105,7 +109,7 @@ export default async function Home() {
                     {e.state.toUpperCase()}
                   </td>
                   <td className="py-2">
-                    {new Date(e.last_changed).toLocaleTimeString()}
+                    <LocalTime iso={e.last_changed} />
                   </td>
                 </tr>
               ))}
@@ -122,7 +126,7 @@ export default async function Home() {
           target="_blank"
         >
           <Twitter size={18} />
-          X /Twitter
+          X&nbsp;/&nbsp;Twitter
           <ArrowUpRightFromSquare size={14} />
         </Link>
 
