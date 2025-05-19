@@ -31,5 +31,5 @@ def send_message(text: str, markdown: bool = True) -> None:
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception as exc:
-        # Do NOT raise — callers不想因为 TG 挂掉就崩溃
+        # Do NOT raise
         print(f"[WARN] Telegram push failed: {exc}")

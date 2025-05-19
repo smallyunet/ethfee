@@ -7,3 +7,4 @@ tweepy
 python-telegram-bot
 APScheduler
 redis
+tweepy>=4.14.0
