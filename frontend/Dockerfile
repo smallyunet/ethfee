@@ -11,7 +11,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev --ignore-scripts \
+RUN npm ci --ignore-scripts \
  && npm install --no-save --include=optional \
       lightningcss-linux-x64-gnu @tailwindcss/oxide-linux-x64-gnu
 
