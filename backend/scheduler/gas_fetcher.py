@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis
 import requests
@@ -66,6 +66,17 @@ _raw = os.getenv("FEE_THRESHOLDS", "1,2,3,5,8,12,20,35,60,100,200")
 THRESHOLDS: list[float] = sorted({float(x) for x in _raw.split(",") if x.strip()})
 
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+def iso_utc() -> str:
+    """
+    Return current time in ISO-8601, *always* tagged as UTC (…Z).
+    Example: '2025-05-19T08:09:20Z'
+    """
+    return (
+        datetime.now(timezone.utc)         # tz-aware datetime
+        .isoformat(timespec="seconds")     # drop microseconds → 2025-05-19T08:09:20+00:00
+        .replace("+00:00", "Z")            # RFC-3339 UTC short-hand
+    )
 
 # ───────────────────────── helpers ─────────────────────────
 def fetch_gas_oracle() -> dict:
@@ -110,7 +121,11 @@ def fetch_and_cache_gas() -> None:
 
         event       = detect_cross(prev_fee, curr_fee)
         now_ts      = time.time()
-        last_ts     = float(redis_client.get(LAST_EVENT_TS_KEY) or 0)
+        last_ts_raw = redis_client.get(LAST_EVENT_TS_KEY)
+        if last_ts_raw is None:
+            redis_client.set(LAST_EVENT_TS_KEY, now_ts)
+            return
+        last_ts = float(last_ts_raw)
 
         allow_push  = (now_ts - last_ts) >= MIN_EVENT_INTERVAL
         must_push   = (now_ts - last_ts) >= MAX_SILENCE  # heartbeat trigger
@@ -128,6 +143,7 @@ def fetch_and_cache_gas() -> None:
                 block=block,
                 event=event,
                 is_heartbeat=False,
+                result=result,
             )
             redis_client.set(LAST_EVENT_TS_KEY, now_ts)
 
@@ -140,6 +156,7 @@ def fetch_and_cache_gas() -> None:
                 block=block,
                 event=None,
                 is_heartbeat=True,
+                result=result,
             )
             redis_client.set(LAST_EVENT_TS_KEY, now_ts)
 
@@ -156,7 +173,7 @@ def fetch_and_cache_gas() -> None:
                     "fast":        f"{result['FastGasPrice']} Gwei",
                     "base_fee":    f"{curr_fee:.6f} Gwei",
                     "last_block":  block,
-                    "last_updated": datetime.utcnow().isoformat(),
+                    "last_updated": iso_utc(),
                 }
             ),
         )
@@ -178,6 +195,7 @@ def push_alert(
     block: str,
     event: dict | None,
     is_heartbeat: bool,
+    result: dict,
 ) -> None:
     safe = fmt_gwei(float(result["SafeGasPrice"]))
     prop = fmt_gwei(float(result["ProposeGasPrice"]))
@@ -203,7 +221,7 @@ def push_alert(
             f"Safe {safe} | Prop {prop} | Fast {fast}\n"
             f"Blk {block}\n"
             f"#Ethereum #GasFees #ETHGas"
-        )[:280]
+        )
         post_to_x(x_msg)
         return
 
@@ -231,7 +249,7 @@ def push_alert(
         f"Safe {safe} | Prop {prop} | Fast {fast}\n"
         f"Blk {block}\n"
         f"#Ethereum #GasFees #ETHGas"
-    )[:280]
+    )
     post_to_x(x_msg)
 
 

@@ -34,7 +34,7 @@ def _get_client() -> tweepy.API | None:
     auth = tweepy.OAuth1UserHandler(
         _API_KEY, _API_KEY_SECRET, _ACCESS_TOKEN, _ACCESS_TOKEN_SECRET
     )
-    return tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
+    return tweepy.API(auth, wait_on_rate_limit=True)
 
 
 def post_to_x(text: str) -> None:
