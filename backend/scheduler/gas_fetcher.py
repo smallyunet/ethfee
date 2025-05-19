@@ -86,18 +86,24 @@ def fetch_and_cache_gas():
             r.hset(THRESHOLD_TS_KEY, t_key, datetime.utcnow().isoformat())
 
             if allow_push:
-                arrow = "▼" if event["state"] == "below" else "▲"
                 delta = curr_fee - prev_fee
+                direction = "increased" if delta > 0 else "decreased"
+                boundary = "above" if event["state"] == "above" else "below"
+                change = f"{direction} by {abs(delta):.2f} Gwei"
                 safe  = fmt_gwei(float(result["SafeGasPrice"]))
                 prop  = fmt_gwei(float(result["ProposeGasPrice"]))
                 fast  = fmt_gwei(float(result["FastGasPrice"]))
                 utc_ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
                 tg_msg = (
-                    f"⛽️ {arrow} *Gas {event['state']} {t_key} Gwei*\n"
-                    f"`Now:`  {fmt_gwei(curr_fee)} Gwei   (Δ {delta:+.2f})\n"
-                    f"`Safe / Prop / Fast:` {safe} / {prop} / {fast} Gwei\n"
-                    f"[Block {block}](https://etherscan.io/block/{block}) · {utc_ts}"
+                    f"⛽️ Gas fee {direction} {boundary} {t_key} Gwei\n"
+                    f"• Current base fee: {fmt_gwei(curr_fee)} Gwei ({change})\n"
+                    f"• Suggested prices:\n"
+                    f"   - Safe: {safe} Gwei\n"
+                    f"   - Propose: {prop} Gwei\n"
+                    f"   - Fast: {fast} Gwei\n"
+                    f"• Block: [#{block}](https://etherscan.io/block/{block})\n"
+                    f"• Time: {utc_ts}"
                 )
 
                 print(f"[EVENT] {tg_msg.replace('*', '').replace('`', '')}")
@@ -128,6 +134,7 @@ def fetch_and_cache_gas():
 
     except Exception as exc:
         print(f"[ERROR] fetch_and_cache_gas: {exc}")
+
 
 
 def start_scheduler():
