@@ -7,7 +7,7 @@ export default function LocalTime({ iso }: { iso: string }) {
   const dt = new Date(iso); // runs in the browser ⇒ local TZ
   return (
     <time dateTime={iso} title={dt.toLocaleString()}>
-      {dt.toLocaleTimeString()}
+      {dt.toLocaleTimeString(undefined, { hour12: false })}
     </time>
   );
 }
