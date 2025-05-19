@@ -14,7 +14,7 @@ services:
     build: ./frontend
     container_name: ethfee-frontend
     ports:
-      - "3000:3000"
+      - "8080:3000"
     env_file:
       - .env
     depends_on:
