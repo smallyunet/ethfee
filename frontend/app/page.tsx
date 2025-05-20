@@ -1,14 +1,5 @@
 'use client';
 
-/*
- * ethfee.info – auto‑refreshing gas‑fee dashboard (client side)
- * ────────────────────────────────────────────────────────────
- * • Refreshes /gas and /events every 10 s with SWR
- * • Falls back to same‑origin requests if NEXT_PUBLIC_API_URL is unset
- * • Shows loading / error state in a tiny status bar
- * • TailwindCSS + lucide‑react icons
- */
-
 import React from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -17,12 +8,13 @@ import {
   Send,
   ArrowUpRightFromSquare,
   RefreshCw,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import LocalTime from '@/components/LocalTime';
+import { useCountdown } from '@/components/useCountdown'; // ✅ 你已拆出这个 hook
 
-//════════════════════════════════════════════════════════════
 // Types
-//════════════════════════════════════════════════════════════
 type GasResponse = {
   safe: string;
   propose: string;
@@ -36,13 +28,10 @@ type EventsResponse = {
   events: {
     threshold: number;
     state: 'above' | 'below';
-    last_changed: string;
+    timestamp: string;
   }[];
 };
 
-//════════════════════════════════════════════════════════════
-// Generic fetcher (adds base URL, handles errors)
-//════════════════════════════════════════════════════════════
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 
 const fetcher = <T,>(path: string): Promise<T> =>
@@ -51,22 +40,21 @@ const fetcher = <T,>(path: string): Promise<T> =>
     return r.json();
   });
 
-//════════════════════════════════════════════════════════════
-// Main page component
-//════════════════════════════════════════════════════════════
 export default function Home() {
-  // SWR hooks – 10‑second polling
+  const refreshInterval = 10000;
+  const countdown = useCountdown(refreshInterval);
+
   const {
     data: gas,
     error: gasErr,
     isLoading: gasLoading,
-  } = useSWR<GasResponse>('/gas', fetcher, { refreshInterval: 10_000 });
+  } = useSWR<GasResponse>('/gas', fetcher, { refreshInterval });
 
   const {
     data: evt,
     error: evtErr,
     isLoading: evtLoading,
-  } = useSWR<EventsResponse>('/events', fetcher, { refreshInterval: 10_000 });
+  } = useSWR<EventsResponse>('/events', fetcher, { refreshInterval });
 
   const loading = gasLoading || evtLoading;
   const error = gasErr || evtErr;
@@ -78,7 +66,11 @@ export default function Home() {
         {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
         {loading && 'Refreshing…'}
         {error && <span className="text-rose-600">Error loading data</span>}
-        {!loading && !error && 'Auto‑refresh every 10 s'}
+        {!loading && !error && (
+          <>
+            Next refresh in <span className="font-mono text-gray-700">{countdown}s</span>
+          </>
+        )}
       </div>
 
       {/* Header */}
@@ -91,13 +83,8 @@ export default function Home() {
       {gas && (
         <section className="w-full max-w-md bg-white shadow-lg rounded-2xl p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4 text-gray-800">Current Gas Fees</h2>
-
           <ul className="space-y-3">
-            {[
-              { label: 'Safe', value: gas.safe },
-              { label: 'Propose', value: gas.propose },
-              { label: 'Fast', value: gas.fast },
-            ].map(({ label, value }) => (
+            {[{ label: 'Safe', value: gas.safe }, { label: 'Propose', value: gas.propose }, { label: 'Fast', value: gas.fast }].map(({ label, value }) => (
               <li
                 key={label}
                 className="flex justify-between items-center border rounded-lg px-4 py-2"
@@ -107,7 +94,6 @@ export default function Home() {
               </li>
             ))}
           </ul>
-
           <div className="mt-4 text-xs text-gray-500 space-y-1">
             <p>Base fee: {gas.base_fee}</p>
             <p>Block&nbsp;# {gas.last_block}</p>
@@ -122,35 +108,27 @@ export default function Home() {
       {evt && (
         <section className="w-full max-w-md bg-white shadow-md rounded-2xl p-6 mb-10">
           <h2 className="text-lg font-semibold mb-4 text-gray-800">Threshold Events</h2>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500">
-                  <th className="pb-2">Threshold</th>
-                  <th className="pb-2">State</th>
-                  <th className="pb-2">Since</th>
-                </tr>
-              </thead>
-              <tbody>
-                {evt.events.map((e) => (
-                  <tr key={e.threshold} className="border-t last:border-b">
-                    <td className="py-2">{e.threshold} Gwei</td>
-                    <td
-                      className={`py-2 font-medium ${
-                        e.state === 'above' ? 'text-rose-600' : 'text-emerald-600'
-                      }`}
-                    >
-                      {e.state.toUpperCase()}
-                    </td>
-                    <td className="py-2">
-                      <LocalTime iso={e.last_changed} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y divide-gray-100 text-sm">
+            {evt.events.map((e, i) => (
+              <li key={i} className="py-3 flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-2">
+                    {e.state === 'above' ? (
+                      <TrendingUp className="h-4 w-4 text-rose-600" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4 text-emerald-600" />
+                    )}
+                    <span>
+                      {e.state.toUpperCase()} {e.threshold} Gwei
+                    </span>
+                  </div>
+                  <div className="text-gray-500 text-xs mt-1">
+                    <LocalTime iso={e.timestamp} />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
