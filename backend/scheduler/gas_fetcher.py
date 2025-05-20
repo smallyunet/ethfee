@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 
 from services.telegram import send_message
 from services.event_log import append_event
+from services.eth_price import get_eth_price_usd
+from services.gas_calc import calc_usd_cost
 
 load_dotenv()
 
@@ -33,7 +35,12 @@ BIG_JUMP_GWEI      = float(os.getenv("BIG_JUMP_GWEI",   "5.0"))        # Gwei
 _raw = os.getenv("FEE_THRESHOLDS", "1,2,3,5,8,12,20,35,60,100,200")
 THRESHOLDS: list[float] = sorted({float(x) for x in _raw.split(",") if x.strip()})
 
+# Constants for gas limits
+ETH_TRANSFER_GAS = 21000
+USDT_TRANSFER_GAS = 65000
+
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
 
 def iso_utc() -> str:
     return (
@@ -42,6 +49,7 @@ def iso_utc() -> str:
         .replace("+00:00", "Z")
     )
 
+
 def fetch_gas_oracle() -> dict:
     url = "https://api.etherscan.io/api"
     params = {"module": "gastracker", "action": "gasoracle", "apikey": ETHERSCAN_API_KEY}
@@ -49,6 +57,7 @@ def fetch_gas_oracle() -> dict:
     if data.get("status") != "1":
         raise RuntimeError(f"Etherscan error: {data.get('message')}")
     return data["result"]
+
 
 def detect_cross(prev_fee: float, curr_fee: float) -> dict | None:
     down = [t for t in THRESHOLDS if prev_fee >= t > curr_fee]
@@ -59,6 +68,7 @@ def detect_cross(prev_fee: float, curr_fee: float) -> dict | None:
         return {"threshold": min(up), "state": "above"}
     return None
 
+
 def fmt_gwei(v: float) -> str:
     if v >= 10:
         return f"{v:.1f}"
@@ -67,6 +77,7 @@ def fmt_gwei(v: float) -> str:
     if v >= 0.1:
         return f"{v:.3f}"
     return f"{v:.4f}"
+
 
 def fetch_and_cache_gas() -> None:
     try:
@@ -118,27 +129,51 @@ def fetch_and_cache_gas() -> None:
 
         redis_client.set(LAST_FEE_KEY, curr_fee)
 
+        # Get ETH price and compute USD costs
+        eth_price_usd = get_eth_price_usd()
+
+        # Base fee tx costs
+        eth_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, ETH_TRANSFER_GAS)
+        usdt_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, USDT_TRANSFER_GAS)
+
+        # Per-mode tx costs
+        safe_fee = float(result["SafeGasPrice"])
+        propose_fee = float(result["ProposeGasPrice"])
+        fast_fee = float(result["FastGasPrice"])
+
+        safe_transfer_usd = calc_usd_cost(safe_fee, eth_price_usd, ETH_TRANSFER_GAS)
+        propose_transfer_usd = calc_usd_cost(propose_fee, eth_price_usd, ETH_TRANSFER_GAS)
+        fast_transfer_usd = calc_usd_cost(fast_fee, eth_price_usd, ETH_TRANSFER_GAS)
+
         redis_client.set(
             GAS_KEY,
             json.dumps(
                 {
-                    "safe":        f"{result['SafeGasPrice']} Gwei",
-                    "propose":     f"{result['ProposeGasPrice']} Gwei",
-                    "fast":        f"{result['FastGasPrice']} Gwei",
+                    "safe":        f"{safe_fee} Gwei",
+                    "propose":     f"{propose_fee} Gwei",
+                    "fast":        f"{fast_fee} Gwei",
                     "base_fee":    f"{curr_fee:.6f} Gwei",
                     "last_block":  block,
                     "last_updated": iso_utc(),
+                    "eth_price_usd": eth_price_usd,
+                    "eth_transfer_usd": eth_tx_usd,
+                    "usdt_transfer_usd": usdt_tx_usd,
+                    "safe_transfer_usd": safe_transfer_usd,
+                    "propose_transfer_usd": propose_transfer_usd,
+                    "fast_transfer_usd": fast_transfer_usd,
                 }
             ),
         )
 
         print(
             f"[INFO] Gas @ block {block} → {curr_fee:.6f} Gwei "
-            f"(prev {prev_fee:.6f})"
+            f"(prev {prev_fee:.6f}) | ETH ${eth_price_usd:.2f} | "
+            f"ETH tx: ${eth_tx_usd:.4f}, USDT tx: ${usdt_tx_usd:.4f}"
         )
 
     except Exception as exc:
         print(f"[ERROR] fetch_and_cache_gas: {exc}")
+
 
 def push_alert(
     *,
@@ -150,35 +185,33 @@ def push_alert(
     is_heartbeat: bool,
     result: dict,
 ) -> None:
-    prop = fmt_gwei(float(result["ProposeGasPrice"]))
+    eth_price_usd = get_eth_price_usd()
+    eth_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, ETH_TRANSFER_GAS)
+    usdt_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, USDT_TRANSFER_GAS)
     utc_ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     if is_heartbeat:
-        tg_msg = (
-            f"📊 Daily gas snapshot\n\n"
-            f"⛽️ Current fee (avg speed): {prop} Gwei\n\n"
-            f"🔗 Block: [#{block}](https://etherscan.io/block/{block})\n"
-            f"🕒 {utc_ts}"
+        msg = (
+            f"📊 Current Ethereum base fee: {fmt_gwei(curr_fee)} Gwei\n"
+            f"Estimated cost: ${eth_tx_usd:.4f} (ETH), ${usdt_tx_usd:.4f} (USDT)\n\n"
+            f"Block: #{block}\n"
+            f"Updated: {utc_ts}"
         )
-        send_message(tg_msg)
+        send_message(msg)
         return
 
-    direction = "increased" if delta > 0 else "decreased"
-    boundary  = "above" if event["state"] == "above" else "below"
-    change    = f"{direction} by {abs(delta):.2f} Gwei"
-    t_key     = event["threshold"]
-
-    tg_msg = (
-        f"{'🔺' if delta > 0 else '🔻'} Gas fee {direction} {boundary} {t_key} Gwei\n\n"
-        f"⛽️ Current fee (avg speed): {prop} Gwei\n"
-        f"📈 Δ {change}\n\n"
-        f"🔗 Block: [#{block}](https://etherscan.io/block/{block})\n"
-        f"🕒 {utc_ts}"
+    direction = "rose" if delta > 0 else "dropped"
+    threshold = event["threshold"]
+    msg = (
+        f"⛽️ Gas fee just {direction} around {threshold} Gwei\n"
+        f"Base fee: {fmt_gwei(curr_fee)} Gwei\n"
+        f"Estimated cost: ${eth_tx_usd:.4f} (ETH), ${usdt_tx_usd:.4f} (USDT)\n\n"
+        f"Block: #{block}\n"
+        f"Updated: {utc_ts}"
     )
-    send_message(tg_msg)
+    send_message(msg)
+    append_event(event["threshold"], event["state"], iso_utc())
 
-    if event:
-        append_event(event["threshold"], event["state"], iso_utc())
 
 def start_scheduler() -> None:
     sched = BackgroundScheduler()

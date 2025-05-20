@@ -1,18 +1,29 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 
-export function useCountdown(intervalMs: number = 10000) {
+/**
+ * Countdown timer that resets when `resetTrigger` changes.
+ *
+ * @param intervalMs - countdown interval in milliseconds
+ * @param resetTrigger - any value that causes countdown to reset when changed
+ * @returns number of seconds remaining
+ */
+export function useCountdown(intervalMs: number, resetTrigger: any): number {
   const [remaining, setRemaining] = useState(intervalMs / 1000);
 
+  // Reset countdown when trigger changes
   useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const next = Math.max(0, intervalMs - elapsed);
-      setRemaining(Math.ceil(next / 1000));
-    }, 1000);
+    setRemaining(intervalMs / 1000);
+  }, [resetTrigger, intervalMs]);
 
-    return () => clearInterval(id);
-  }, [intervalMs]);
+  // Countdown ticking every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   return remaining;
 }
