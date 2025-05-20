@@ -81,20 +81,23 @@ def fmt_gwei(v: float) -> str:
 
 def fetch_and_cache_gas() -> None:
     try:
-        result   = fetch_gas_oracle()
-        curr_fee = float(result["suggestBaseFee"])
-        block    = result["LastBlock"]
+        result = fetch_gas_oracle()
 
-        prev_fee   = float(redis_client.get(LAST_FEE_KEY) or curr_fee)
-        delta      = curr_fee - prev_fee
-        abs_delta  = abs(delta)
-        event      = detect_cross(prev_fee, curr_fee)
-        now_ts     = time.time()
-        last_ts    = float(redis_client.get(LAST_EVENT_TS_KEY) or 0)
+        # Use propose gas price instead of base fee for cost estimate
+        base_fee = float(result["suggestBaseFee"])
+        propose_fee = float(result["ProposeGasPrice"])
+        block = result["LastBlock"]
 
-        allow_push  = (now_ts - last_ts) >= MIN_EVENT_INTERVAL
-        must_push   = (now_ts - last_ts) >= MAX_SILENCE
-        big_jump    = abs_delta >= BIG_JUMP_GWEI
+        prev_fee = float(redis_client.get(LAST_FEE_KEY) or base_fee)
+        delta = base_fee - prev_fee
+        abs_delta = abs(delta)
+        event = detect_cross(prev_fee, base_fee)
+        now_ts = time.time()
+        last_ts = float(redis_client.get(LAST_EVENT_TS_KEY) or 0)
+
+        allow_push = (now_ts - last_ts) >= MIN_EVENT_INTERVAL
+        must_push = (now_ts - last_ts) >= MAX_SILENCE
+        big_jump = abs_delta >= BIG_JUMP_GWEI
 
         should_push = (
             event and (
@@ -105,7 +108,7 @@ def fetch_and_cache_gas() -> None:
 
         if should_push:
             push_alert(
-                curr_fee=curr_fee,
+                curr_fee=propose_fee,   # use propose_fee for cost display
                 prev_fee=prev_fee,
                 delta=delta,
                 block=block,
@@ -117,7 +120,7 @@ def fetch_and_cache_gas() -> None:
 
         elif must_push:
             push_alert(
-                curr_fee=curr_fee,
+                curr_fee=propose_fee,
                 prev_fee=prev_fee,
                 delta=0.0,
                 block=block,
@@ -127,47 +130,41 @@ def fetch_and_cache_gas() -> None:
             )
             redis_client.set(LAST_EVENT_TS_KEY, now_ts)
 
-        redis_client.set(LAST_FEE_KEY, curr_fee)
+        redis_client.set(LAST_FEE_KEY, base_fee)
 
-        # Get ETH price and compute USD costs
+        # Get ETH price and compute USD costs based on propose_fee
         eth_price_usd = get_eth_price_usd()
 
-        # Base fee tx costs
-        eth_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, ETH_TRANSFER_GAS)
-        usdt_tx_usd = calc_usd_cost(curr_fee, eth_price_usd, USDT_TRANSFER_GAS)
+        eth_tx_usd = calc_usd_cost(propose_fee, eth_price_usd, ETH_TRANSFER_GAS)
+        usdt_tx_usd = calc_usd_cost(propose_fee, eth_price_usd, USDT_TRANSFER_GAS)
 
-        # Per-mode tx costs
+        # Safe / Propose / Fast values (for frontend display only)
         safe_fee = float(result["SafeGasPrice"])
-        propose_fee = float(result["ProposeGasPrice"])
         fast_fee = float(result["FastGasPrice"])
-
-        safe_transfer_usd = calc_usd_cost(safe_fee, eth_price_usd, ETH_TRANSFER_GAS)
-        propose_transfer_usd = calc_usd_cost(propose_fee, eth_price_usd, ETH_TRANSFER_GAS)
-        fast_transfer_usd = calc_usd_cost(fast_fee, eth_price_usd, ETH_TRANSFER_GAS)
 
         redis_client.set(
             GAS_KEY,
             json.dumps(
                 {
-                    "safe":        f"{safe_fee} Gwei",
-                    "propose":     f"{propose_fee} Gwei",
-                    "fast":        f"{fast_fee} Gwei",
-                    "base_fee":    f"{curr_fee:.6f} Gwei",
-                    "last_block":  block,
+                    "safe": f"{safe_fee} Gwei",
+                    "propose": f"{propose_fee} Gwei",
+                    "fast": f"{fast_fee} Gwei",
+                    "base_fee": f"{base_fee:.6f} Gwei",
+                    "last_block": block,
                     "last_updated": iso_utc(),
                     "eth_price_usd": eth_price_usd,
                     "eth_transfer_usd": eth_tx_usd,
                     "usdt_transfer_usd": usdt_tx_usd,
-                    "safe_transfer_usd": safe_transfer_usd,
-                    "propose_transfer_usd": propose_transfer_usd,
-                    "fast_transfer_usd": fast_transfer_usd,
+                    "safe_transfer_usd": calc_usd_cost(safe_fee, eth_price_usd, ETH_TRANSFER_GAS),
+                    "propose_transfer_usd": eth_tx_usd,
+                    "fast_transfer_usd": calc_usd_cost(fast_fee, eth_price_usd, ETH_TRANSFER_GAS),
                 }
             ),
         )
 
         print(
-            f"[INFO] Gas @ block {block} → {curr_fee:.6f} Gwei "
-            f"(prev {prev_fee:.6f}) | ETH ${eth_price_usd:.2f} | "
+            f"[INFO] Gas @ block {block} → {propose_fee:.6f} Gwei "
+            f"(base {base_fee:.6f}) | ETH ${eth_price_usd:.2f} | "
             f"ETH tx: ${eth_tx_usd:.4f}, USDT tx: ${usdt_tx_usd:.4f}"
         )
 

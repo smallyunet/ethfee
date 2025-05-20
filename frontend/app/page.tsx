@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import LocalTime from '@/components/LocalTime';
 import { useCountdown } from '@/components/useCountdown';
+import { GasPriceCell } from '@/components/GasPriceCell';
 
 type GasResponse = {
   safe: string;
@@ -66,7 +67,7 @@ export default function Home() {
   const error = gasErr || evtErr;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-50 flex flex-col items-center px-4 py-12">
+    <main className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-50 flex flex-col items-center px-4 py-10">
       {/* Status */}
       <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
         {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
@@ -80,60 +81,81 @@ export default function Home() {
       </div>
 
       {/* Title */}
-      <header className="mb-8 text-center">
-        <h1 className="text-4xl font-bold text-indigo-600">ethfee.info</h1>
+      <header className="mb-6 text-center">
+        <h1 className="text-2xl sm:text-3xl font-bold text-indigo-600">ethfee.info</h1>
         <p className="text-sm text-gray-500 mt-1">Real-time Ethereum gas fee monitor</p>
       </header>
 
-      {/* Gas Fee Card */}
+      {/* Gas Fee Table */}
       {gas && (
-        <section className="w-full max-w-md bg-white shadow-md rounded-xl p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 text-center mb-4">
+        <section className="w-full max-w-md bg-white shadow-md rounded-xl p-4 sm:p-6 mb-8">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-800 text-center mb-4">
             Ethereum Gas Fees
           </h2>
 
-          <table className="w-full text-sm font-mono text-gray-700">
-            <thead>
-              <tr className="border-b text-gray-500">
-                <th className="text-left py-2">Type</th>
-                <th className="text-right">Gas (Gwei)</th>
-                <th className="text-right">ETH Tx ($)</th>
-                <th className="text-right">USDT Tx ($)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {[
-                {
-                  label: 'Safe',
-                  gwei: gas.safe,
-                  ethUsd: gas.safe_transfer_usd,
-                  usdtUsd: gas.eth_price_usd && gas.safe_transfer_usd && (gas.safe_transfer_usd / 21000) * 65000,
-                },
-                {
-                  label: 'Propose',
-                  gwei: gas.propose,
-                  ethUsd: gas.propose_transfer_usd,
-                  usdtUsd: gas.eth_price_usd && gas.propose_transfer_usd && (gas.propose_transfer_usd / 21000) * 65000,
-                },
-                {
-                  label: 'Fast',
-                  gwei: gas.fast,
-                  ethUsd: gas.fast_transfer_usd,
-                  usdtUsd: gas.eth_price_usd && gas.fast_transfer_usd && (gas.fast_transfer_usd / 21000) * 65000,
-                },
-              ].map(({ label, gwei, ethUsd, usdtUsd }) => (
-                <tr key={label} className="hover:bg-gray-50">
-                  <td className="py-2 font-semibold">{label}</td>
-                  <td className="text-right text-indigo-600">{parseFloat(gwei).toFixed(4)}</td>
-                  <td className="text-right">${ethUsd?.toFixed(4) ?? '0.0000'}</td>
-                  <td className="text-right">${usdtUsd?.toFixed(4) ?? '0.0000'}</td>
+          <div className="overflow-x-auto">
+            <table className="min-w-[360px] w-full text-sm font-mono text-gray-700">
+              <thead>
+                <tr className="border-b text-gray-500">
+                  <th className="text-left py-2 w-1/4 whitespace-nowrap">Type</th>
+                  <th className="text-right w-1/4 whitespace-nowrap">
+                    Gas<br /><span className="text-[11px]">(Gwei)</span>
+                  </th>
+                  <th className="text-right w-1/4 whitespace-nowrap">
+                    ETH Tx<br /><span className="text-[11px]">($)</span>
+                  </th>
+                  <th className="text-right w-1/4 whitespace-nowrap">
+                    USDT Tx<br /><span className="text-[11px]">($)</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y">
+                {[
+                  {
+                    label: 'Safe',
+                    gwei: gas.safe,
+                    ethUsd: gas.safe_transfer_usd,
+                    usdtUsd:
+                      gas.eth_price_usd && gas.safe_transfer_usd
+                        ? (gas.safe_transfer_usd / 21000) * 65000
+                        : 0,
+                  },
+                  {
+                    label: 'Propose',
+                    gwei: gas.propose,
+                    ethUsd: gas.propose_transfer_usd,
+                    usdtUsd:
+                      gas.eth_price_usd && gas.propose_transfer_usd
+                        ? (gas.propose_transfer_usd / 21000) * 65000
+                        : 0,
+                  },
+                  {
+                    label: 'Fast',
+                    gwei: gas.fast,
+                    ethUsd: gas.fast_transfer_usd,
+                    usdtUsd:
+                      gas.eth_price_usd && gas.fast_transfer_usd
+                        ? (gas.fast_transfer_usd / 21000) * 65000
+                        : 0,
+                  },
+                ].map(({ label, gwei, ethUsd, usdtUsd }) => (
+                  <tr key={label} className="hover:bg-gray-50">
+                    <td className="py-2 font-semibold">{label}</td>
+                    <td className="text-right text-indigo-600 whitespace-nowrap">
+                      <GasPriceCell value={gwei} inline />
+                    </td>
+                    <td className="text-right whitespace-nowrap">${ethUsd?.toFixed(4) ?? '0.0000'}</td>
+                    <td className="text-right whitespace-nowrap">${usdtUsd?.toFixed(4) ?? '0.0000'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          <div className="mt-4 text-xs text-center text-gray-500 space-y-1">
-            <p>Base fee: {gas.base_fee} Gwei</p>
+          <div className="mt-4 text-[11px] sm:text-xs text-center text-gray-500 space-y-1">
+            <p>
+              Base fee: <GasPriceCell value={gas.base_fee.replace(' Gwei', '')} inline /> Gwei
+            </p>
             <p>Block #{gas.last_block}</p>
             <p>Updated: <LocalTime iso={gas.last_updated} /></p>
             {gas.eth_price_usd && <p>ETH price: ${gas.eth_price_usd.toFixed(2)}</p>}
@@ -143,10 +165,8 @@ export default function Home() {
 
       {/* Threshold Events */}
       {evt && (
-        <section className="w-full max-w-md bg-white shadow-sm rounded-xl p-6 mb-8">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">
-            Threshold Events
-          </h2>
+        <section className="w-full max-w-md bg-white shadow-sm rounded-xl p-4 sm:p-6 mb-8">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">Threshold Events</h2>
           <ul className="text-sm divide-y">
             {evt.events.map((e, i) => (
               <li key={i} className="py-3">
