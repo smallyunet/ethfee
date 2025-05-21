@@ -164,7 +164,7 @@ export default function HomeClient() {
       {/* Footer */}
       <footer className="mt-6 text-sm text-gray-500 flex gap-6">
         <Link
-          href="https://x.com/ethfee"
+          href="https://x.com/ethfeeinfo"
           className="flex items-center gap-1 hover:text-indigo-600"
           target="_blank"
         >
