@@ -6,5 +6,6 @@ router = APIRouter()
 @router.get("/events")
 def get_gas_events():
     return {
-        "events": get_recent_events()
+        "events": get_recent_events(limit=5)
     }
+
