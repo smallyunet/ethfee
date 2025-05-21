@@ -347,3 +347,4 @@ pip-selfcheck.json
 
 .env
 redis-data
+!frontend/lib/
