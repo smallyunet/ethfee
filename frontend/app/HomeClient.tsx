@@ -10,6 +10,7 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
+  Github,
 } from 'lucide-react';
 import LocalTime from '@/components/LocalTime';
 import { useCountdown } from '@/components/useCountdown';
@@ -36,7 +37,7 @@ export default function HomeClient() {
   const loading = gasLoading || evtLoading;
   const error = gasErr || evtErr;
 
-   return (
+  return (
     <main className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-50 flex flex-col items-center px-4 py-10">
       {/* Status */}
       <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
@@ -177,7 +178,15 @@ export default function HomeClient() {
         >
           <Send size={16} /> Telegram <ArrowUpRightFromSquare size={12} />
         </Link>
+        <Link
+          href="https://github.com/smallyunet/ethfee"
+          className="flex items-center gap-1 hover:text-indigo-600"
+          target="_blank"
+        >
+          <Github size={16} /> GitHub <ArrowUpRightFromSquare size={12} />
+        </Link>
       </footer>
+
     </main>
   );
 }

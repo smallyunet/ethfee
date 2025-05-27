@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from services.telegram import send_message
 from services.event_log import append_event
-from services.eth_price import get_eth_price_usd
+from services.eth_price import get_eth_price_usd, set_eth_price_usd
 from services.gas_calc import calc_usd_cost
 
 load_dotenv()
@@ -24,6 +24,7 @@ REDIS_URL         = os.getenv("REDIS_URL", "redis://localhost:6379")
 GAS_KEY           = "gas_fee"
 LAST_FEE_KEY      = "last_base_fee"
 LAST_EVENT_TS_KEY = "gas_last_event_ts"
+ETH_PRICE_KEY     = "eth_price_usd"
 
 # Tunables
 MIN_EVENT_INTERVAL = int(os.getenv("MIN_EVENT_INTERVAL", "60"))        # s
@@ -83,7 +84,6 @@ def fetch_and_cache_gas() -> None:
     try:
         result = fetch_gas_oracle()
 
-        # Use propose gas price instead of base fee for cost estimate
         base_fee = float(result["suggestBaseFee"])
         propose_fee = float(result["ProposeGasPrice"])
         block = result["LastBlock"]
@@ -108,7 +108,7 @@ def fetch_and_cache_gas() -> None:
 
         if should_push:
             push_alert(
-                curr_fee=propose_fee,   # use propose_fee for cost display
+                curr_fee=propose_fee,
                 prev_fee=prev_fee,
                 delta=delta,
                 block=block,
@@ -132,13 +132,11 @@ def fetch_and_cache_gas() -> None:
 
         redis_client.set(LAST_FEE_KEY, base_fee)
 
-        # Get ETH price and compute USD costs based on propose_fee
         eth_price_usd = get_eth_price_usd()
 
         eth_tx_usd = calc_usd_cost(propose_fee, eth_price_usd, ETH_TRANSFER_GAS)
         usdt_tx_usd = calc_usd_cost(propose_fee, eth_price_usd, USDT_TRANSFER_GAS)
 
-        # Safe / Propose / Fast values (for frontend display only)
         safe_fee = float(result["SafeGasPrice"])
         fast_fee = float(result["FastGasPrice"])
 
@@ -210,7 +208,24 @@ def push_alert(
     append_event(event["threshold"], event["state"], iso_utc())
 
 
+def fetch_eth_price_and_cache() -> None:
+    """Fetch ETH price from CoinGecko and cache in Redis"""
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {"ids": "ethereum", "vs_currencies": "usd"}
+        resp = requests.get(url, params=params, timeout=10)
+        data = resp.json()
+        price = float(data["ethereum"]["usd"])
+        redis_client.set(ETH_PRICE_KEY, price)
+        redis_client.set("eth_price_last_updated", iso_utc())
+        print(f"[INFO] Updated ETH price: ${price:.2f}")
+    except Exception as e:
+        print(f"[ERROR] fetch_eth_price_and_cache: {e}")
+
+
 def start_scheduler() -> None:
     sched = BackgroundScheduler()
+    sched.add_job(fetch_eth_price_and_cache, "interval", minutes=5, max_instances=1)
     sched.add_job(fetch_and_cache_gas, "interval", seconds=10, max_instances=1)
     sched.start()
+    print("[INFO] Scheduler started.")
